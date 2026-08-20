@@ -26,7 +26,6 @@ def send_commands() -> None:
     
     dev.write(dis)
     dev.write(lig)
-    #dev.write(lig)
 
     dev.close()
 
