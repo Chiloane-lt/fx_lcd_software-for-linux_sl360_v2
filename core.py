@@ -16,7 +16,9 @@ def prepare_chunks(blob: bytes) -> list[bytes]:
 def send_commands() -> None:
     #Opening device
     dev = hid.device()
-    dev.open(0x2000,0x3000)
+    VID=0x2000
+    PID=0x3000
+    dev.open(VID,PID)
     
     #Sending spesial commands
     report = "00"
@@ -31,7 +33,9 @@ def send_commands() -> None:
 
 def send_image(chunks) -> None:
     dev = hid.device()
-    dev.open(0x2000,0x3000)
+    VID=0x2000
+    PID=0x3000
+    dev.open(VID,PID)
     #Writing data
     while True:
         for chunk in chunks:
