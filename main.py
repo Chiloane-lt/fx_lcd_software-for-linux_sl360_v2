@@ -13,16 +13,17 @@ sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 parser = argparse.ArgumentParser(prog = 'lcd_software',
                                 description = 'sets your image to lcd display')
-parser.add_argument('--mode', choices = ['image', 'video'], required = True)
-parser.add_argument('path')
+parser.add_argument('--mode', choices = ['image', 'video'], required = True, help="chose mode: image - sets image to display, video - sets video to display(will be available soon) ")
+parser.add_argument('path', help="path to your image/video")
+parser.add_argument('--rotate', type=int, default=0, choices = [0, 90, 180, 270,], help="clockwise rotation")
 
 args = parser.parse_args()
 
 if not os.path.isfile(args.path):
-    parser.error(f"файл не найден: {args.path}")
+    parser.error(f"file dont exests: {args.path}")
 
 if args.mode == 'image':
-    images_bytes = get_images_bytes(args.path)
+    images_bytes = get_images_bytes(args.path, rotate=args.rotate)
     blob = prepare_blob(images_bytes)
     chunks = prepare_chunks(blob)
     send_commands()
