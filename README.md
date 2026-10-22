@@ -1,156 +1,202 @@
-# fx_lcd_software
+# FX LCD Linux Driver — SL360 V2 Personal Version
 
-Unofficial Linux driver for ID-COOLING FX series LCD AIO liquid coolers.
-The vendor software is Windows-only. This tool speaks the cooler's native USB HID protocol directly, so you can put any picture on your AIO's LCD from Linux — no Wine, no VM.
+An unofficial Linux driver adaptation for the **ID-COOLING SL360 V2 AIO liquid cooler with LCD**, based on the original [fx_lcd_software-for-linux](https://github.com/w1n-ror/fx_lcd_software-for-linux) project.
 
-## Features
+The original project targets ID-COOLING FX-series LCD coolers. This personal version adapts the HID communication and image handling for the SL360 V2, tested on Fedora Linux. It sends images directly to the cooler over USB HID without requiring the Windows vendor application, Wine, or a virtual machine.
 
-- Send any image to the LCD (auto-resized to 240x240)
-- Clockwise rotation: 0 / 90 / 180 / 270
-- Video mode and temperature overlay — on the roadmap
+**This is a hardware-specific adaptation under development.** Compatibility with other coolers has not been established.
 
-## Supported devices
+## Differences from the original project
 
-- ID-COOLING FX 240 / FX 360 LCD series
-- Known USB IDs: VID `0x2000`, PID `0x3000`
-- Tested on: FX 240 LCD
+| Area | Original project | This SL360 V2 version |
+| --- | --- | --- |
+| Target hardware | ID-COOLING FX LCD series | ID-COOLING SL360 V2 |
+| USB VID:PID | `2000:3000` | `2000:3002` |
+| Image resolution | 240 × 240 | 480 × 480 |
+| Startup commands | Sends `DIS` and `LIG` | Sends `LIG`; skips `DIS` |
+| Image transfer | HID image chunks | Retains chunk streaming with a 3 ms delay |
+| Command-line interface | `--mode`, `--rotate` | Retains the original interface |
 
-**Your VID/PID may differ!** Other batches or regional versions may use different USB IDs. Find your device with:
+The changes above reflect the current implementation and tests on the SL360 V2. They should not be assumed to work identically on other devices.
+
+## Current status
+
+### Working and tested
+- Detects the cooler using USB vendor ID `0x2000` and product ID `0x3002`.
+- Displays images at 480 × 480.
+- Supports the original image-mode command-line interface and rotation options.
+- Streams image data in 1024-byte chunks, prefixed with HID report ID `0x00`.
+- Uses the `LIG` brightness command with brightness value `0x64` (100%).
+- Skipping `DIS` prevents the built-in default text screen from reappearing in the observed tests.
+
+### Known limitations
+- The image remains visible while the streaming program runs.
+- When the HID connection closes, the display shuts down after approximately 2–3 seconds in observed tests.
+- The exact reason for this shutdown behaviour has not been confirmed.
+- Video mode, temperature overlays, and a graphical interface are not implemented.
+- Only the ID-COOLING SL360 V2 described here has been tested with this adaptation.
+
+## Hardware and environment
+
+- Cooler: ID-COOLING SL360 V2
+- USB vendor ID: `0x2000`
+- USB product ID: `0x3002`
+- USB product string observed: `HOTSPOTEKUSB HID DEMO`
+- Display resolution observed: 480 × 480
+- Tested operating system: Fedora 44
+- Python dependencies: `hidapi`, `Pillow`
+
+Find your USB device ID with:
+
 ```bash
 lsusb
 ```
 
-On my system the cooler shows up as `CMX Systems HOTSPOTEKUSB HID DEMO, ID 2000:3000` — yours may be listed differently. Not sure which line is your cooler? Unplug it, run `lsusb`, plug it back in and run `lsusb` again: the new line is your device. (Or paste the `lsusb` output into an AI assistant and ask which entry is your AIO.)
-
-If your IDs differ, update them in two places:
-1. In the code. Open `core.py` and edit the constants at the top (example values for ID `1234:abcd`):
-```python
-VID = 0x1234
-PID = 0xabcd
-```
-2. In the udev rule. Create `/etc/udev/rules.d/99-fx-lcd.rules` with your IDs, written without the `0x` prefix:
-```text
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1234", ATTRS{idProduct}=="abcd", MODE="0666"
-```
-Then apply the rule and replug the cooler:
-```bash
-sudo udevadm control --reload-rules && sudo udevadm trigger
-```
+If your device does not appear as `2000:3002`, do not assume these settings are suitable for it.
 
 ## Requirements
 
-Python 3.9+
+Python 3.10 or later, `hidapi`, and Pillow.
 
-`hidapi` and `Pillow`:
-- Arch:
-```bash
-sudo pacman -S python-hidapi python-pillow
-```
-- pip:
-```bash
-pip install hidapi pillow
-```
-
-## Installation
-
-### Step 1. Get the code
+On Fedora, install the system packages:
 
 ```bash
-git clone https://github.com/w1n-ror/fx_lcd_software-for-linux.git
-cd fx_lcd_software-for-linux
+sudo dnf install python3 python3-pip python3-pillow
 ```
 
-### Step 2. Permissions (udev rule)
-
-The tool writes to `/dev/hidraw*`. **Without permissions you will get Permission denied.** Either run as root, or (recommended) add a udev rule.
-
-Create `/etc/udev/rules.d/99-fx-lcd.rules`:
-```text
-SUBSYSTEM=="hidraw", ATTRS{idVendor}=="2000", ATTRS{idProduct}=="3000", MODE="0666"
-```
-*(adjust `idVendor`/`idProduct` if your device differs)*
-
-Apply without reboot:
-```bash
-sudo udevadm control --reload-rules && sudo udevadm trigger
-```
-You may need to replug the cooler afterwards.
-
-### Step 3. Install as a system command (symlink)
+Create and activate a project-local virtual environment:
 
 ```bash
-chmod +x main.py
-ln -s "$PWD/main.py" ~/.local/bin/fx_software
+python3 -m venv .venv
+source .venv/bin/activate
 ```
 
-Make sure `~/.local/bin` is in your `PATH` (e.g. `fish_add_path ~/.local/bin` or add it to your shell profile). The symlink's name becomes the command name — call it whatever you like.
+Install the Python dependencies:
+
+```bash
+python -m pip install hidapi Pillow
+```
+
+## Local development setup
+
+Clone this personal repository:
+
+```bash
+git clone https://github.com/Chiloane-lt/fx_lcd_software-for-linux_sl360_v2.git
+cd fx_lcd_software-for-linux_sl360_v2
+```
+
+If you are already working in the project directory, you do not need to clone it again.
+
+### USB permissions
+
+The program needs permission to access the cooler's HID device. On Fedora, a udev rule can grant access to the logged-in desktop user.
+
+Create the rule:
+
+```bash
+sudo nano /etc/udev/rules.d/99-fx-lcd.rules
+```
+
+Add:
+
+```udev
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="2000", ATTRS{idProduct}=="3002", TAG+="uaccess"
+```
+
+Save the file, then reload the rules:
+
+```bash
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+```
+
+Unplug and reconnect the cooler if necessary. If access still fails, check the device permissions and the system's udev logs before changing permissions more broadly.
 
 ## Usage
 
+Run the driver directly from the project directory:
+
 ```bash
-fx_software --mode image ~/wallpaper.png
-fx_software --mode image --rotate 90 ~/wallpaper.png
+python main.py --mode image /path/to/image.png
 ```
+
+Rotate the image clockwise by 90 degrees:
+
+```bash
+python main.py --mode image --rotate 90 /path/to/image.png
+```
+
+Supported rotation values are `0`, `90`, `180`, and `270`.
 
 | Argument | Description |
-| :--- | :--- |
-| `--mode {image,video}` | **Required.** `video` is coming soon |
-| `path` | **Required** positional, path to your image |
-| `--rotate {0,90,180,270}` | Clockwise rotation, default `0` |
-| `-h, --help` | Show help |
+| --- | --- |
+| `--mode {image,video}` | Required mode argument; image mode is implemented |
+| `path` | Required path to the source image |
+| `--rotate {0,90,180,270}` | Clockwise rotation; defaults to `0` |
+| `-h, --help` | Display command-line help |
 
-The image is converted to a baseline JPEG (4:2:0), resized to 240x240 and streamed to the display in a loop. Press `Ctrl+C` to stop.
+The program resizes the image to 480 × 480, converts it to RGB, encodes a baseline JPEG, and streams the frame to the LCD.
 
-Run in background (no visible terminal):
-```bash
-fx_software --mode image ~/wallpaper.png &
-disown
-```
+**The image stream runs continuously.** Press `Ctrl+C` to stop the program. Based on current tests, the LCD shuts down shortly after the HID connection closes.
 
-Stop it later with:
-```bash
-pkill -f fx_software
-```
+Video mode is not implemented. Do not use it expecting video playback to work.
 
 ## Troubleshooting
 
-- **Permission denied** — udev rule not applied, see Installation Step 2 (or run with `sudo`).
-- **Device not found / nothing happens** — check `lsusb` for VID/PID; if yours differ, see Supported devices above.
-- **Image is upside down or sideways** — use `--rotate`.
-- **Screen stays black** — make sure no other software (VM, Wine instance of the vendor tool) is holding the device.
+- **Permission denied:** Check the udev rule, reconnect the cooler, and confirm that your user can access its HID device.
+- **Device not found:** Run `lsusb` and confirm the device's VID:PID is `2000:3002`.
+- **Image is sideways or upside down:** Try `--rotate 90`, `--rotate 180`, or `--rotate 270`.
+- **The image disappears after the program exits:** This matches the behaviour observed so far when the HID connection closes.
+- **The built-in text screen reappears:** Confirm that the `DIS` command has not been reintroduced into `send_commands()`.
 
-## Protocol notes (for developers)
+## Protocol notes
 
-Reverse-engineered by observing the vendor software over USB HID. All transfers are HID writes with report id `0x00`.
+The implementation uses USB HID writes with report ID `0x00`.
 
-Frame packet (32-byte header, then the JPEG):
+The image frame contains a 32-byte header followed by JPEG data:
+
 ```text
 43 52 54 00 00   "CRT"
 44 52 41 00 00   "DRA"
-LL LL            payload length = 32 + JPEG size, big-endian
-B1               magic byte
-00 * 19          padding
-FF D8 ... FF D9  baseline JPEG, 4:2:0 subsampling
+LL LL            Payload length: 32 + JPEG size, big-endian
+B1               Magic byte
+00 * 19          Padding
+FF D8 ... FF D9  Baseline JPEG
 ```
 
-Payload is sent in 1024-byte chunks, each prefixed with report id `0x00`.
-Pacing between chunks ~2.5–3 ms; faster writes overflow the device.
+The frame is sent in 1024-byte chunks, each prefixed with report ID `0x00`. The delay between chunks is approximately 3 ms; faster writes may overflow the device.
 
-Other commands:
-- `DIS` (`44 49 53 00 00` + zeros) — disconnect/clear. Sent at session start, the display clears when the stream stops; without it the last frame persists in the buffer.
-- `LIG` (`4C 49 47 00 00` + brightness byte) — brightness, `0x64` = 100%. The vendor sends it twice per session; once is enough.
+Commands used by this version:
+
+- `LIG` (`4C 49 47 00 00` followed by a brightness byte): brightness control. This implementation uses `0x64` (100%).
+- `DIS` (`44 49 53 00 00` followed by zero padding): the original project uses this as a disconnect/clear command. This version deliberately skips it because testing showed that doing so prevented the built-in default text screen from reappearing.
+
+The precise firmware behaviour when the HID connection closes remains unconfirmed.
+
+## Development notes
+
+Additional hardware observations, test results, and local backups are kept in the `dev-notes/` directory during development. Local backups and test artifacts are excluded from Git; `dev-notes/DEVELOPMENT.md` records the current findings.
+
+This project is still being tested locally. It has not been packaged for installation.
 
 ## Roadmap
 
-- [ ] Video mode
-- [ ] Temperature overlay
-- [ ] EXIF orientation auto-fix
-- [ ] GUI
+- [ ] Investigate display behaviour after the HID connection closes
+- [ ] Implement video mode
+- [ ] Add temperature overlay
+- [ ] Handle EXIF orientation automatically
+- [ ] Develop a graphical interface
+- [ ] Prepare packaging only after local testing is complete
 
-## Disclaimer
+## Disclaimer and attribution
 
-**Not affiliated with ID-COOLING. Use at your own risk.** This tool only sends display frames; it does not touch fan or pump control.
+This is an unofficial community adaptation and is not affiliated with or endorsed by ID-COOLING.
 
-## Contributing
+The work builds on the original [fx_lcd_software-for-linux](https://github.com/w1n-ror/fx_lcd_software-for-linux) project. Please consult the original repository for its licensing terms.
 
-Issues and PRs are welcome. For device-compatibility reports please attach `lsusb` output and, if possible, a `strace` capture of the vendor software.
+This software communicates with the LCD display; it does not control the cooler's fans or pump. Use it at your own risk.
+
+## Contributing and compatibility reports
+
+Reports about other devices are welcome. Include the USB VID:PID from `lsusb`, your operating system, and relevant logs where possible. Compatibility with other hardware should be tested rather than assumed.
