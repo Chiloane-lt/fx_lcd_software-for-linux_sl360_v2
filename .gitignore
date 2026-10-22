@@ -1,2 +1,11 @@
 __pycache__/
-.pyc
+*.py[cod]
+
+# Local development environment
+.venv/
+venv/
+.env
+
+# Local development backups and test artifacts
+dev-notes/backups/
+dev-notes/tests/

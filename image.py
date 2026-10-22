@@ -8,9 +8,9 @@ def get_images_bytes(path: str | None = None, rotate: int = 0) -> bytes:
     #user can rotate image
     if rotate:
         img = img.rotate(-rotate, expand = True)
-    if img.size != (240, 240):
+    if img.size != (480, 480):
         print("resizing image")
-        img = img.resize((240, 240))
+        img = img.resize((480, 480))
     img = img.convert("RGB")
     #Getting images bytes
     buffer = BytesIO()

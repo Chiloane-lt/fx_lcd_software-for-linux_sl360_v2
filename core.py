@@ -17,16 +17,14 @@ def send_commands() -> None:
     #Opening device
     dev = hid.device()
     VID=0x2000
-    PID=0x3000
+    PID=0x3002
     dev.open(VID,PID)
     
     #Sending spesial commands
     report = "00"
     crt = "4352540000"
-    dis = bytes.fromhex(report + crt + "444953").ljust(1025,b"\x00")
     lig = bytes.fromhex(report + crt + "4c4947000064").ljust(1025,b"\x00")
     
-    dev.write(dis)
     dev.write(lig)
 
     dev.close()
@@ -34,10 +32,10 @@ def send_commands() -> None:
 def send_image(chunks) -> None:
     dev = hid.device()
     VID=0x2000
-    PID=0x3000
+    PID=0x3002
     dev.open(VID,PID)
     #Writing data
     while True:
         for chunk in chunks:
-            dev.write(b"\x00" + chunk)
+            dev.write(bytes([0]) + chunk)
             time.sleep(0.003)
