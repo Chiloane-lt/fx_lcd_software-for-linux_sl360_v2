@@ -23,8 +23,12 @@ if not os.path.isfile(args.path):
     parser.error(f"file dont exests: {args.path}")
 
 if args.mode == 'image':
-    images_bytes = get_images_bytes(args.path, rotate=args.rotate)
-    blob = prepare_blob(images_bytes)
+    try:
+        images_bytes = get_images_bytes(args.path, rotate=args.rotate)
+        blob = prepare_blob(images_bytes)
+    except (RuntimeError, ValueError) as exc:
+        parser.error(str(exc))
+
     chunks = prepare_chunks(blob)
     send_commands()
     send_image(chunks)

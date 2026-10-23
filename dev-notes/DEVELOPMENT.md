@@ -13,7 +13,9 @@
 - core.py: uses VID 0x2000 and PID 0x3002.
 - core.py: send_commands() sends LIG brightness command but skips DIS.
 - image.py: resizes images to 480x480 and encodes baseline JPEG.
-- main.py: original CLI interface retained, including --mode and --rotate.
+- image.py: starts at JPEG quality 80 and retries in steps of 5 down to quality 20 if the payload exceeds 65,503 bytes.
+- image.py: validates the complete frame size against the 65,535-byte limit, including the 32-byte header.
+- main.py: original CLI interface retained, including --mode and --rotate; image-preparation errors are reported cleanly without a traceback.
 
 ## Confirmed behaviour
 - The test image displays correctly at 480x480.
@@ -21,6 +23,9 @@
 - With the HID connection open and streaming stopped, the image remained visible during the 25-second idle test.
 - After the HID connection closes, the display shuts down after approximately 2–3 seconds.
 - Skipping DIS prevented the built-in default text screen from reappearing in the observed tests.
+- A 70,155-byte JPEG at quality 80 was successfully recompressed at quality 75 to 61,624 bytes and displayed correctly.
+- When compression cannot fit within the configured limit, all quality levels from 80 through 20 are tried and a clear error is raised.
+- main.py reports image-preparation failures through argparse and exits with status 2 before sending data to the LCD.
 
 ## Protocol notes
 - Frame header begins with CRT and DRA markers.
