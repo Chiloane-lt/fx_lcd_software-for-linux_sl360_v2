@@ -1,5 +1,5 @@
 
-from PIL import Image
+from PIL import Image, ImageOps
 from io import BytesIO
 
 # The frame length is stored in two bytes and includes the 32-byte header.
@@ -13,14 +13,44 @@ QUALITY_STEP = 5
 
 
 # Converts and resizes the user's image.
-def encode_image(img: Image.Image, rotate: int = 0) -> bytes:
+
+def encode_image(
+    img: Image.Image,
+    rotate: int = 0,
+    resize_mode: str = "stretch",
+) -> bytes:
     img = img.convert("RGB")
 
     if rotate:
         img = img.rotate(-rotate, expand=True)
 
-    if img.size != (480, 480):
-        img = img.resize((480, 480))
+    target_size = (480, 480)
+
+    if resize_mode == "stretch":
+        img = img.resize(target_size)
+
+    elif resize_mode == "fit":
+        img.thumbnail(target_size, Image.Resampling.LANCZOS)
+
+        background = Image.new("RGB", target_size, (0, 0, 0))
+        x = (target_size[0] - img.width) // 2
+        y = (target_size[1] - img.height) // 2
+        background.paste(img, (x, y))
+        img = background
+
+    elif resize_mode == "crop":
+        img = ImageOps.fit(
+            img,
+            target_size,
+            method=Image.Resampling.LANCZOS,
+            centering=(0.5, 0.5),
+        )
+
+    else:
+        raise ValueError(
+            f"Unknown resize mode '{resize_mode}'. "
+            "Choose 'stretch', 'fit', or 'crop'."
+        )
 
     for quality in range(
         START_QUALITY, MIN_QUALITY - 1, -QUALITY_STEP
@@ -49,12 +79,16 @@ def encode_image(img: Image.Image, rotate: int = 0) -> bytes:
     )
 
 
-def get_images_bytes(path: str | None = None, rotate: int = 0) -> bytes:
+def get_images_bytes(
+    path: str | None = None,
+    rotate: int = 0,
+    resize_mode: str = "stretch",
+) -> bytes:
     try:
         with Image.open(path) as source:
             img = source.copy()
 
-        return encode_image(img, rotate)
+        return encode_image(img, rotate, resize_mode)
 
     except Exception as exc:
         raise RuntimeError(
@@ -62,7 +96,11 @@ def get_images_bytes(path: str | None = None, rotate: int = 0) -> bytes:
         ) from exc
 
 
-def get_gif_frames(path: str, rotate: int = 0):
+def get_gif_frames(
+    path: str,
+    rotate: int = 0,
+    resize_mode: str = "stretch",
+):
     try:
         with Image.open(path) as gif:
             if not getattr(gif, "is_animated", False):
@@ -75,7 +113,7 @@ def get_gif_frames(path: str, rotate: int = 0):
                 frame = gif.convert("RGB").copy()
                 duration_ms = max(20, int(gif.info.get("duration", 100)))
 
-                jpeg_bytes = encode_image(frame, rotate)
+                jpeg_bytes = encode_image(frame, rotate, resize_mode)
                 yield jpeg_bytes, duration_ms
 
     except Exception as exc:

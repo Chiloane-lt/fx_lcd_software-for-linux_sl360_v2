@@ -20,6 +20,12 @@ parser.add_argument(
 parser.add_argument('path', help="path to your image/video")
 parser.add_argument('--rotate', type=int, default=0, choices = [0, 90, 180, 270,], help="clockwise rotation")
 parser.add_argument(
+    '--resize',
+    choices=['stretch', 'fit', 'crop'],
+    default='stretch',
+    help='Resizing mode: stretch (default), fit (black background), or crop',
+)
+parser.add_argument(
     '--debug-timing',
     action='store_true',
     help='Print GIF frame transmission timing for debugging',
@@ -39,7 +45,11 @@ if not os.path.isfile(args.path):
 
 if args.mode == 'image':
     try:
-        images_bytes = get_images_bytes(args.path, rotate=args.rotate)
+        images_bytes = get_images_bytes(
+            args.path,
+            rotate=args.rotate,
+            resize_mode=args.resize,
+        )
         blob = prepare_blob(images_bytes)
     except (RuntimeError, ValueError) as exc:
         parser.error(str(exc))
@@ -52,8 +62,11 @@ elif args.mode == 'gif':
     try:
         frames = [
             (prepare_chunks(prepare_blob(jpeg_bytes)), duration_ms)
-            for jpeg_bytes, duration_ms
-            in get_gif_frames(args.path, rotate=args.rotate)
+            for jpeg_bytes, duration_ms in get_gif_frames(
+                args.path,
+                rotate=args.rotate,
+                resize_mode=args.resize,
+            )
         ]
 
         if not frames:

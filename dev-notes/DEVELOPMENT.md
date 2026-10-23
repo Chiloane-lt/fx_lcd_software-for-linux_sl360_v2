@@ -118,3 +118,58 @@ Frames required approximately 43–45 USB chunks each.
 **Limitations:** These results are from one GIF and one AIO device. They do not establish the physical LCD refresh rate or guarantee identical behavior with every GIF or device.
 
 **Future investigation:** Test additional GIFs with different frame sizes and durations. Investigate video playback separately before implementing the currently unavailable video mode.
+
+
+### Image and GIF resizing modes
+
+The `--resize` CLI option controls how still images and animated GIF frames are scaled to the LCD's 480x480 display.
+
+**Available modes:**
+
+| Mode | Behavior |
+|---|---|
+| `stretch` | Resizes directly to 480x480. May distort the original aspect ratio. This is the default and preserves previous behavior. |
+| `fit` | Preserves the aspect ratio, fits the entire image inside 480x480, and centres it on a black background. |
+| `crop` | Preserves the aspect ratio, fills the full 480x480 display, and crops excess content from the edges. |
+
+**Usage examples:**
+
+```bash
+# Still image, default stretch mode
+python main.py --mode image ~/Pictures/example.jpg
+
+# Still image, fit with black background
+python main.py --mode image --resize fit ~/Pictures/example.jpg
+
+# Still image, crop with 90-degree clockwise rotation
+python main.py --mode image --resize crop --rotate 90 ~/Pictures/example.jpg
+
+# Animated GIF, fit with rotation
+python main.py --mode gif --resize fit --rotate 90 ~/Pictures/sakuraFlowers.gif
+
+# Animated GIF, crop
+python main.py --mode gif --resize crop ~/Pictures/sakuraFlowers.gif
+```
+
+**Implementation:**
+- The `--resize` option accepts `stretch`, `fit`, or `crop`; its default is `stretch`.
+- Still images and GIF frames share the `encode_image()` function, keeping resizing behavior consistent.
+- Rotation is applied before resizing.
+- `fit` uses a black RGB background. User-selectable background colours may be added later.
+- Existing JPEG compression and frame-size limits remain in place.
+
+**Hardware test results:** Using `~/Pictures/sakuraFlowers.gif` on the ID-Cooling SL360 V2 LCD, the following tests passed:
+
+| Media | Resize mode | Rotation |
+|---|---|---|
+| Still image | `fit` | None |
+| Still image | `fit` | 90 degrees |
+| Still image | `crop` | None |
+| Still image | `crop` | 90 degrees |
+| Still image | `stretch` (default) | 90 degrees |
+| Animated GIF | `fit` | 90 degrees |
+| Animated GIF | `crop` | None |
+| Animated GIF | `crop` | 90 degrees |
+| Animated GIF | `stretch` (default) | 90 degrees |
+
+These tests confirmed that the selected modes work on the physical display, including rotation. Testing is not exhaustive across all image formats, aspect ratios, or GIFs.
