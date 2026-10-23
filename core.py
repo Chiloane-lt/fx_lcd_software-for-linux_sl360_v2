@@ -39,3 +39,46 @@ def send_image(chunks) -> None:
         for chunk in chunks:
             dev.write(bytes([0]) + chunk)
             time.sleep(0.003)
+
+def send_gif(
+    frames,
+    debug_timing: bool = False,
+    chunk_delay: float = 0.0,
+) -> None:
+    dev = hid.device()
+    VID = 0x2000
+    PID = 0x3002
+
+    try:
+        dev.open(VID, PID)
+
+        frame_number = 0
+
+        while True:
+            for chunks, duration_ms in frames:
+                frame_number += 1
+                frame_start = time.monotonic()
+
+                for chunk in chunks:
+                    dev.write(bytes([0]) + chunk)
+                    if chunk_delay > 0:
+                        time.sleep(chunk_delay)
+
+                transmission_ms = (time.monotonic() - frame_start) * 1000
+                remaining = duration_ms - transmission_ms
+
+                if debug_timing:
+                    print(
+                        f"Frame {frame_number}: "
+                        f"target={duration_ms} ms, "
+                        f"transmission={transmission_ms:.1f} ms, "
+                        f"wait={max(0, remaining):.1f} ms, "
+                        f"chunks={len(chunks)}",
+                        flush=True,
+                    )
+
+                if remaining > 0:
+                    time.sleep(remaining / 1000)
+
+    finally:
+        dev.close()

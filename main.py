@@ -3,19 +3,34 @@ import sys
 import argparse
 import os
 
-from image import get_images_bytes
-from image import prepare_blob
-from core import prepare_chunks
-from core import send_commands
-from core import send_image
+from image import get_images_bytes, prepare_blob, get_gif_frames
+from core import prepare_chunks, send_commands, send_image, send_gif
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
 parser = argparse.ArgumentParser(prog = 'lcd_software',
                                 description = 'sets your image to lcd display')
-parser.add_argument('--mode', choices = ['image', 'video'], required = True, help="chose mode: image - sets image to display, video - sets video to display(will be available soon) ")
+
+parser.add_argument(
+    '--mode',
+    choices=['image', 'gif', 'video'],
+    required=True,
+    help='Mode: image - display a still image, gif - play an animated GIF, video - video playback (not yet available)',
+)
 parser.add_argument('path', help="path to your image/video")
 parser.add_argument('--rotate', type=int, default=0, choices = [0, 90, 180, 270,], help="clockwise rotation")
+parser.add_argument(
+    '--debug-timing',
+    action='store_true',
+    help='Print GIF frame transmission timing for debugging',
+)
+parser.add_argument(
+    '--chunk-delay',
+    type=float,
+    default=0.0,
+    metavar='SECONDS',
+    help='Delay between GIF USB chunks in seconds (default: 0.0)',
+)
 
 args = parser.parse_args()
 
@@ -32,5 +47,27 @@ if args.mode == 'image':
     chunks = prepare_chunks(blob)
     send_commands()
     send_image(chunks)
+
+elif args.mode == 'gif':
+    try:
+        frames = [
+            (prepare_chunks(prepare_blob(jpeg_bytes)), duration_ms)
+            for jpeg_bytes, duration_ms
+            in get_gif_frames(args.path, rotate=args.rotate)
+        ]
+
+        if not frames:
+            parser.error("The GIF contains no frames.")
+
+    except (RuntimeError, ValueError) as exc:
+        parser.error(str(exc))
+
+    send_commands()
+    send_gif(
+        frames,
+        debug_timing=args.debug_timing,
+        chunk_delay=args.chunk_delay,
+    )
+
 else:
-    print("video mode will be available soon")
+    print("Video mode will be available soon.")

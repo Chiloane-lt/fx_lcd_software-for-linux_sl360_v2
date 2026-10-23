@@ -13,55 +13,75 @@ QUALITY_STEP = 5
 
 
 # Converts and resizes the user's image.
+def encode_image(img: Image.Image, rotate: int = 0) -> bytes:
+    img = img.convert("RGB")
+
+    if rotate:
+        img = img.rotate(-rotate, expand=True)
+
+    if img.size != (480, 480):
+        img = img.resize((480, 480))
+
+    for quality in range(
+        START_QUALITY, MIN_QUALITY - 1, -QUALITY_STEP
+    ):
+        buffer = BytesIO()
+        img.save(
+            buffer,
+            "JPEG",
+            quality=quality,
+            subsampling=2,
+            dpi=(96, 96),
+        )
+        jpeg_bytes = buffer.getvalue()
+
+        if len(jpeg_bytes) <= MAX_JPEG_SIZE:
+            if quality != START_QUALITY:
+                print(
+                    f"Image compressed to fit: JPEG quality {quality}, "
+                    f"{len(jpeg_bytes):,} bytes"
+                )
+            return jpeg_bytes
+
+    raise ValueError(
+        f"Image is too large at JPEG quality {MIN_QUALITY}. "
+        f"Maximum JPEG size is {MAX_JPEG_SIZE:,} bytes."
+    )
+
+
 def get_images_bytes(path: str | None = None, rotate: int = 0) -> bytes:
     try:
         with Image.open(path) as source:
             img = source.copy()
 
-        if rotate:
-            img = img.rotate(-rotate, expand=True)
-
-        if img.size != (480, 480):
-            print("Resizing image to 480x480")
-            img = img.resize((480, 480))
-
-        img = img.convert("RGB")
-
-        for quality in range(
-            START_QUALITY, MIN_QUALITY - 1, -QUALITY_STEP
-        ):
-            buffer = BytesIO()
-            img.save(
-                buffer,
-                "JPEG",
-                quality=quality,
-                subsampling=2,
-                dpi=(96, 96),
-            )
-            jpeg_bytes = buffer.getvalue()
-            frame_size = len(jpeg_bytes) + FRAME_HEADER_SIZE
-
-            if len(jpeg_bytes) <= MAX_JPEG_SIZE:
-                if quality != START_QUALITY:
-                    print(
-                        f"Image compressed to fit: JPEG quality {quality}, "
-                        f"{len(jpeg_bytes):,} bytes "
-                        f"(frame: {frame_size:,}/{MAX_FRAME_SIZE:,} bytes)"
-                    )
-                return jpeg_bytes
-
-            print(
-                f"JPEG quality {quality} is too large: "
-                f"{len(jpeg_bytes):,} bytes; trying lower quality."
-            )
-
-        raise ValueError(
-            f"Image is still too large at JPEG quality {MIN_QUALITY}. "
-            f"JPEG size must be at most {MAX_JPEG_SIZE:,} bytes."
-        )
+        return encode_image(img, rotate)
 
     except Exception as exc:
-        raise RuntimeError(f"Could not prepare image '{path}': {exc}") from exc
+        raise RuntimeError(
+            f"Could not prepare image '{path}': {exc}"
+        ) from exc
+
+
+def get_gif_frames(path: str, rotate: int = 0):
+    try:
+        with Image.open(path) as gif:
+            if not getattr(gif, "is_animated", False):
+                raise ValueError("The selected file is not an animated GIF.")
+
+            for frame_number in range(gif.n_frames):
+                gif.seek(frame_number)
+
+                # Copy the current frame before moving to the next one.
+                frame = gif.convert("RGB").copy()
+                duration_ms = max(20, int(gif.info.get("duration", 100)))
+
+                jpeg_bytes = encode_image(frame, rotate)
+                yield jpeg_bytes, duration_ms
+
+    except Exception as exc:
+        raise RuntimeError(
+            f"Could not prepare GIF '{path}': {exc}"
+        ) from exc
 
 
 # Prepares the frame blob.
