@@ -56,7 +56,7 @@ If your device does not appear as `2000:3002`, do not assume these settings are 
 
 ## Requirements
 
-Python 3.10 or later, `hidapi`, and Pillow.
+Python 3.10 or later, `hidapi`, Pillow, and FFmpeg (required for video decoding and playback).
 
 On Fedora, install the system packages:
 

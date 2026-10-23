@@ -3,8 +3,19 @@ import sys
 import argparse
 import os
 
-from image import get_images_bytes, prepare_blob, get_gif_frames
-from core import prepare_chunks, send_commands, send_image, send_gif
+from image import (
+    get_images_bytes,
+    prepare_blob,
+    get_gif_frames,
+    get_video_frames,
+)
+from core import (
+    prepare_chunks,
+    send_commands,
+    send_image,
+    send_gif,
+    send_video,
+)
 
 sys.path.append(os.path.dirname(os.path.realpath(__file__)))
 
@@ -15,7 +26,7 @@ parser.add_argument(
     '--mode',
     choices=['image', 'gif', 'video'],
     required=True,
-    help='Mode: image - display a still image, gif - play an animated GIF, video - video playback (not yet available)',
+    help='Mode: image - display a still image, gif - play an animated GIF, video - play a video)',
 )
 parser.add_argument('path', help="path to your image/video")
 parser.add_argument('--rotate', type=int, default=0, choices = [0, 90, 180, 270,], help="clockwise rotation")
@@ -28,14 +39,14 @@ parser.add_argument(
 parser.add_argument(
     '--debug-timing',
     action='store_true',
-    help='Print GIF frame transmission timing for debugging',
+    help='Print GIF/video frame transmission timing for debugging',
 )
 parser.add_argument(
     '--chunk-delay',
     type=float,
     default=0.0,
     metavar='SECONDS',
-    help='Delay between GIF USB chunks in seconds (default: 0.0)',
+    help='Delay between GIF/video  USB chunks in seconds (default: 0.0)',
 )
 
 args = parser.parse_args()
@@ -83,4 +94,30 @@ elif args.mode == 'gif':
     )
 
 else:
-    print("Video mode will be available soon.")
+    frames = None
+
+    try:
+        frames = get_video_frames(
+            args.path,
+            rotate=args.rotate,
+            resize_mode=args.resize,
+        )
+        first_frame = next(frames, None)
+
+        if first_frame is None:
+            parser.error("The video contains no frames.")
+
+        send_commands()
+        send_video(
+            first_frame,
+            frames,
+            debug_timing=args.debug_timing,
+            chunk_delay=args.chunk_delay,
+        )
+    except KeyboardInterrupt:
+        print("\nVideo playback stopped.")
+    except (RuntimeError, ValueError) as exc:
+        parser.error(str(exc))
+    finally:
+        if frames is not None:
+            frames.close()

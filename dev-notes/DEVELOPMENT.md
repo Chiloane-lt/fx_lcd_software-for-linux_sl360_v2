@@ -173,3 +173,66 @@ python main.py --mode gif --resize crop ~/Pictures/sakuraFlowers.gif
 | Animated GIF | `stretch` (default) | 90 degrees |
 
 These tests confirmed that the selected modes work on the physical display, including rotation. Testing is not exhaustive across all image formats, aspect ratios, or GIFs.
+
+### Video playback dependency
+
+FFmpeg is a required system dependency for the planned video playback functionality. It will decode video files into frames for processing by the existing Pillow-based image pipeline and transmission to the LCD.
+
+The installation method has not yet been decided. Fedora compatibility is the initial target; document and implement dependency installation checks once the setup method is chosen.
+
+## Video Ctrl+C and delayed LCD shutdown
+
+**Status:** Under investigation
+
+### Observed behaviour
+
+When playing `~/Videos/RainyForest.mp4` in video mode with `--resize crop`:
+
+1. Pressing Ctrl+C stops video playback immediately.
+2. After a brief pause, the terminal prints:
+   - `Closing LCD USB device...`
+   - `LCD USB device closed in 0.01 seconds.`
+   - `Video playback stopped.`
+3. The program returns to the shell prompt.
+4. The LCD remains on for a longer pause, then shuts off.
+
+The process is no longer stuck after the interrupt handler was added. The remaining delay is between the program exiting and the LCD shutting off.
+
+### Changes and checks completed
+
+- Added a `KeyboardInterrupt` handler to the video branch in `main.py`.
+- Added a `finally` block to close the FFmpeg frame generator.
+- Temporarily measured dev.close() at approximately 0.01 seconds; the diagnostic prints have since been removed.
+- `python -m py_compile main.py core.py image.py` passes.
+- The HID device close was measured at approximately 0.01 seconds.
+- The current `send_video()` cleanup closes the HID device in a `finally` block.
+- `send_commands()` sends the `LIG` brightness command and deliberately skips `DIS`.
+
+### Current assessment
+
+The measured USB close time does not explain the longer delay before the LCD shuts off. The delay appears to occur after the application has returned to the shell.
+
+The LCD may retain its last frame after the USB connection closes and shut down later due to device or firmware behaviour. This explanation has not yet been confirmed.
+
+### Protocol caution
+
+The original project's protocol notes describe `DIS` as a disconnect/clear command. However, testing on this SL360 V2 showed that skipping `DIS` prevents the built-in default text screen from reappearing.
+
+Do not reintroduce `DIS` as part of the interrupt fix without a separate, controlled test.
+
+### Follow-up investigation
+
+- [x] Compare still-image and video exit behaviour; the delayed shutdown occurs after both.
+- [x] Confirm that the measured USB close time does not explain the observed delay.
+- [ ] Investigate the LCD's behaviour after the HID device closes.
+- [ ] Keep the current no-`DIS` behaviour unless a controlled test demonstrates a better result.
+
+### Follow-up: still-image shutdown delay
+
+**Result:** The delayed LCD shutdown also occurs after still-image playback. The behaviour is therefore not limited to video mode.
+
+The application can return to the shell while the LCD remains lit for a while before shutting off. During video interruption testing, `dev.close()` completed in approximately 0.01 seconds, so the observed delay occurs after the HID close call returns.
+
+**Conclusion:** The delay is reproducible in both still-image and video modes. Its exact cause remains unconfirmed; do not attribute it definitively to the device firmware without further evidence.
+
+The issue is documented and is not being investigated further for this change set.
