@@ -2,6 +2,7 @@ import hid
 import time
 
 from image import prepare_blob
+from config import load_config
 
 def prepare_chunks(blob: bytes) -> list[bytes]:
     #Making chunks from blob
@@ -16,31 +17,37 @@ def prepare_chunks(blob: bytes) -> list[bytes]:
     return chunks
 
 def send_commands() -> None:
-    #Opening device
+    """Send the initial brightness command and always close the HID device."""
     dev = hid.device()
-    VID=0x2000
-    PID=0x3002
-    dev.open(VID,PID)
-    
-    #Sending spesial commands
-    report = "00"
-    crt = "4352540000"
-    lig = bytes.fromhex(report + crt + "4c4947000064").ljust(1025,b"\x00")
-    
-    dev.write(lig)
 
-    dev.close()
+    try:
+        config = load_config()
+        dev.open(config["usb_vid"], config["usb_pid"])
+
+        report = "00"
+        crt = "4352540000"
+        lig = bytes.fromhex(report + crt + "4c4947000064").ljust(
+            1025, b"\x00"
+        )
+        dev.write(lig)
+    finally:
+        dev.close()
+
 
 def send_image(chunks) -> None:
+    """Continuously display image data until playback is interrupted."""
     dev = hid.device()
-    VID=0x2000
-    PID=0x3002
-    dev.open(VID,PID)
-    #Writing data
-    while True:
-        for chunk in chunks:
-            dev.write(bytes([0]) + chunk)
-            time.sleep(0.003)
+    config = load_config()
+
+    try:
+        dev.open(config["usb_vid"], config["usb_pid"])
+
+        while True:
+            for chunk in chunks:
+                dev.write(bytes([0]) + chunk)
+                time.sleep(0.003)
+    finally:
+        dev.close()
 
 def send_gif(
     frames,
@@ -48,11 +55,10 @@ def send_gif(
     chunk_delay: float = 0.0,
 ) -> None:
     dev = hid.device()
-    VID = 0x2000
-    PID = 0x3002
+    config = load_config()
 
     try:
-        dev.open(VID, PID)
+        dev.open(config["usb_vid"], config["usb_pid"])
 
         frame_number = 0
 
@@ -95,11 +101,10 @@ def send_video(
     from itertools import chain
 
     dev = hid.device()
-    VID = 0x2000
-    PID = 0x3002
+    config = load_config()
 
     try:
-        dev.open(VID, PID)
+        dev.open(config["usb_vid"], config["usb_pid"])
 
 
         for frame_number, (jpeg_bytes, duration_ms) in enumerate(

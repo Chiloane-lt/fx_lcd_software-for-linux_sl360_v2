@@ -11,7 +11,7 @@ The original project targets ID-COOLING FX-series LCD coolers. This personal ver
 | Area | Original project | This SL360 V2 version |
 | --- | --- | --- |
 | Target hardware | ID-COOLING FX LCD series | ID-COOLING SL360 V2 |
-| USB VID:PID | `2000:3000` | `2000:3002` |
+| USB VID:PID | `2000:3000` | Configurable; defaults to `2000:3002` |
 | Image resolution | 240 × 240 | 480 × 480 |
 | Startup commands | Sends `DIS` and `LIG` | Sends `LIG`; skips `DIS` |
 | Image transfer | HID image chunks | Retains chunk streaming with a 3 ms delay |
@@ -22,7 +22,7 @@ The changes above reflect the current implementation and tests on the SL360 V2. 
 ## Current status
 
 ### Working and tested
-- Detects the cooler using USB vendor ID `0x2000` and product ID `0x3002`.
+- Uses configurable USB vendor and product IDs, defaulting to `0x2000:0x3002` for the tested SL360 V2.
 - Displays images at 480 × 480.
 - Supports the original image-mode command-line interface and rotation options.
 - Streams image data in 1024-byte chunks, prefixed with HID report ID `0x00`.
@@ -114,6 +114,24 @@ sudo udevadm trigger
 Unplug and reconnect the cooler if necessary. If access still fails, check the device permissions and the system's udev logs before changing permissions more broadly.
 
 ## Usage
+
+### USB device configuration
+
+The USB vendor ID (VID) and product ID (PID) are saved in:
+
+`~/.config/fx-lcd/config.json`
+
+The default IDs for the tested SL360 V2 are VID `0x2000` and PID `0x3002`.
+
+Set the IDs with:
+
+```bash
+python main.py set-device 0x2000 0x3002
+```
+
+Replace these values with the VID and PID reported by `lsusb` if using a different compatible device. The command accepts hexadecimal values (with the `0x` prefix) and saves them as integers in the JSON configuration. All USB communication functions use these saved IDs.
+
+Changing the IDs does not change the LCD communication protocol or guarantee compatibility with another device. If the IDs change, review `/etc/udev/rules.d/99-fx-lcd.rules` and update its matching IDs as needed. The command only saves configuration; it does not connect to the LCD.
 
 Run the driver directly from the project directory:
 

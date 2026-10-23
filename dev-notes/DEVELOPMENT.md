@@ -10,7 +10,11 @@
 - Python dependency: hidapi; Pillow
 
 ## Current working changes
-- core.py: uses VID 0x2000 and PID 0x3002.
+- config.py: stores persistent USB IDs as `usb_vid` and `usb_pid`, defaulting to 0x2000 and 0x3002.
+- config.py: validates USB IDs as integers in the range 0–65535; legacy configuration files inherit the defaults for missing fields.
+- core.py: all four USB communication functions use the saved IDs from `load_config()`.
+- main.py: `set-device VID PID` saves configurable USB IDs without connecting to the LCD; hexadecimal CLI values are converted to integers.
+- dev-notes/tests/test_config_usb_ids.py: four automated tests cover defaults, validation, persistence, and preservation of media settings without hardware access.
 - core.py: send_commands() sends LIG brightness command but skips DIS.
 - image.py: resizes images to 480x480 and encodes baseline JPEG.
 - image.py: starts at JPEG quality 80 and retries in steps of 5 down to quality 20 if the payload exceeds 65,503 bytes.

@@ -1,3 +1,4 @@
+
 __pycache__/
 *.py[cod]
 
@@ -8,4 +9,9 @@ venv/
 
 # Local development backups and test artifacts
 dev-notes/backups/
-dev-notes/tests/
+dev-notes/tests/*
+
+# Automated tests live outside the application code
+
+# Local source-file backups
+*.before-*
