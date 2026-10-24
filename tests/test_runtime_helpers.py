@@ -21,6 +21,7 @@ HELPER_NAMES = {
     "_remove_pid_file_if_matches",
     "_write_pid_file",
     "_is_managed_process",
+    "_is_service_process",
     "_remove_own_pid_file",
     "_terminate_process",
 }
@@ -48,6 +49,20 @@ def load_runtime_helpers(namespace):
     ast.fix_missing_locations(module)
     namespace["__file__"] = str(MAIN_PATH)
     exec(compile(module, str(MAIN_PATH), "exec"), namespace)
+
+
+class _FakeBinaryFile:
+    def __init__(self, data):
+        self.data = data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False
+
+    def read(self):
+        return self.data
 
 
 class RuntimeHelperTests(unittest.TestCase):
@@ -81,6 +96,44 @@ class RuntimeHelperTests(unittest.TestCase):
         self.assertFalse(
             self.helpers["_is_managed_process"](2**30)
         )
+
+    def test_service_process_is_detected(self):
+        command_line = bytes([0]).join([
+            b"/usr/bin/python",
+            os.fsencode(str(MAIN_PATH)),
+            b"--mode",
+            b"image",
+            b"--service-playback",
+            b"",
+        ])
+        with patch("builtins.open", return_value=_FakeBinaryFile(command_line)):
+            self.assertTrue(self.helpers["_is_service_process"](12345))
+            self.assertTrue(self.helpers["_is_managed_process"](12345))
+
+    def test_service_startup_process_is_managed(self):
+        command_line = bytes([0]).join([
+            b"/usr/bin/python",
+            os.fsencode(str(MAIN_PATH)),
+            b"service",
+            b"",
+        ])
+
+        with patch("builtins.open", return_value=_FakeBinaryFile(command_line)):
+            self.assertTrue(self.helpers["_is_managed_process"](12345))
+            self.assertTrue(self.helpers["_is_service_process"](12345))
+
+    def test_manual_playback_is_not_service_playback(self):
+        command_line = bytes([0]).join([
+            b"/usr/bin/python",
+            os.fsencode(str(MAIN_PATH)),
+            b"--mode",
+            b"image",
+            b"--managed-playback",
+            b"",
+        ])
+        with patch("builtins.open", return_value=_FakeBinaryFile(command_line)):
+            self.assertFalse(self.helpers["_is_service_process"](12345))
+            self.assertTrue(self.helpers["_is_managed_process"](12345))
 
     def test_remove_own_pid_file_only_when_pid_matches(self):
         own_pid = os.getpid()

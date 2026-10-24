@@ -106,16 +106,50 @@ def _terminate_process(process, timeout=5):
         return False
 
 
+
 def _is_managed_process(pid):
     """Check that the PID belongs to an fx-lcd managed playback process."""
     try:
         with open(f"/proc/{pid}/cmdline", "rb") as file:
             command = file.read().split(b"\0")
-        expected_script = os.fsencode(os.path.realpath(__file__))
+
+        expected_script = os.path.realpath(__file__)
+        if len(command) < 2:
+            return False
+
+        actual_script = os.path.realpath(os.fsdecode(command[1]))
+        if actual_script != expected_script:
+            return False
+
+        # Recognise the service during startup, before it execs playback.
+        if len(command) > 2 and command[2] == b"service":
+            return True
+
         return (
+            b"--managed-playback" in command
+            or b"--service-playback" in command
+        )
+    except (OSError, ValueError):
+        return False
+
+
+
+def _is_service_process(pid):
+    """Check whether a PID belongs to service startup or playback."""
+    try:
+        with open(f"/proc/{pid}/cmdline", "rb") as file:
+            command = file.read().split(b"\0")
+
+        expected_script = os.fsencode(os.path.realpath(__file__))
+        is_fx_lcd = (
             len(command) > 1
-            and os.path.realpath(os.fsdecode(command[1])) == os.fsdecode(expected_script)
-            and b"--managed-playback" in command
+            and os.path.realpath(os.fsdecode(command[1]))
+            == os.fsdecode(expected_script)
+        )
+
+        return is_fx_lcd and (
+            (len(command) > 2 and command[2] == b"service")
+            or b"--service-playback" in command
         )
     except (OSError, ValueError):
         return False
@@ -137,9 +171,97 @@ def _handle_termination(signum, frame):
 
 # The child playback process uses this hidden flag. A normal user playback
 # invocation is unaffected.
-if "--managed-playback" in sys.argv:
+if (sys.argv[1:2] == ["service"] or "--managed-playback" in sys.argv or "--service-playback" in sys.argv):
     signal.signal(signal.SIGTERM, _handle_termination)
     atexit.register(_remove_own_pid_file)
+
+
+# Run saved playback in the foreground for systemd.
+if len(sys.argv) > 1 and sys.argv[1] == "service":
+    service_parser = argparse.ArgumentParser(
+        prog="fx-lcd service",
+        description="Run saved playback in the foreground for systemd.",
+    )
+    service_parser.add_argument(
+        "--debug-timing",
+        action="store_true",
+        help="Print GIF/video frame transmission timing for debugging.",
+    )
+    service_parser.add_argument(
+        "--chunk-delay",
+        type=float,
+        default=0.0,
+        metavar="SECONDS",
+        help="Delay between GIF/video USB chunks in seconds (default: 0.0).",
+    )
+    service_args = service_parser.parse_args(sys.argv[2:])
+
+    if service_args.chunk_delay < 0:
+        service_parser.error("--chunk-delay must be zero or greater.")
+
+    try:
+        config = load_config()
+    except (OSError, ValueError, TypeError) as exc:
+        service_parser.error(f"Cannot load configuration: {exc}")
+
+    media_path = config.get("media_path")
+    mode = config.get("mode")
+    rotate = config.get("rotate")
+    resize = config.get("resize")
+
+    if not isinstance(media_path, str) or not media_path.strip():
+        service_parser.error(
+            "No media file is configured. Choose one with "
+            "'fx-lcd set-media PATH'."
+        )
+    if mode not in ("image", "gif", "video"):
+        service_parser.error(f"Invalid saved media type: {mode!r}.")
+    if type(rotate) is not int or rotate not in (0, 90, 180, 270):
+        service_parser.error(f"Invalid saved rotation: {rotate!r}.")
+    if resize not in ("stretch", "fit", "crop"):
+        service_parser.error(f"Invalid saved resize mode: {resize!r}.")
+
+    try:
+        media_path, detected_mode = detect_media_type(media_path, mode=mode)
+    except (OSError, ValueError, TypeError) as exc:
+        service_parser.error(f"Invalid configured media file: {exc}")
+
+    runtime_lock = _acquire_runtime_lock()
+    current_pid = _read_managed_pid()
+
+    if current_pid is not None and _is_managed_process(current_pid):
+        runtime_lock.close()
+        service_parser.error(
+            f"fx-lcd is already running (PID {current_pid}). "
+            "Stop the existing playback before starting the service."
+        )
+
+    if current_pid is not None:
+        _remove_pid_file_if_matches(current_pid)
+
+    os.makedirs(_RUNTIME_DIR, exist_ok=True)
+    _write_pid_file(os.getpid())
+
+    child_args = [
+        sys.executable,
+        os.path.realpath(__file__),
+        "--mode", detected_mode,
+        media_path,
+        "--rotate", str(rotate),
+        "--resize", resize,
+        "--chunk-delay", str(service_args.chunk_delay),
+        "--service-playback",
+    ]
+    if service_args.debug_timing:
+        child_args.append("--debug-timing")
+
+    # Release the lock before exec; systemd will track this same PID.
+    runtime_lock.close()
+    try:
+        os.execv(sys.executable, child_args)
+    except OSError as exc:
+        _remove_pid_file_if_matches(os.getpid())
+        service_parser.error(f"Could not launch service playback: {exc}")
 
 
 # Handle stop before parsing the normal playback arguments.
@@ -160,6 +282,13 @@ if len(sys.argv) > 1 and sys.argv[1] == "stop":
         _remove_pid_file_if_matches(pid)
         print("No managed fx-lcd playback process is running.")
         sys.exit(0)
+
+    if _is_service_process(pid):
+        print(
+            "fx-lcd is managed by systemd; use "
+            "'sudo systemctl stop fx-lcd.service'."
+        )
+        sys.exit(2)
 
     try:
         os.kill(pid, signal.SIGTERM)
@@ -441,6 +570,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "start":
 
     print(f"fx-lcd started (PID {process.pid}).")
     print(f"Log: {_LOG_FILE}")
+    runtime_lock.close()
     sys.exit(0)
 
 parser = argparse.ArgumentParser(
@@ -481,6 +611,11 @@ parser.add_argument(
 )
 parser.add_argument(
     "--managed-playback",
+    action="store_true",
+    help=argparse.SUPPRESS,
+)
+parser.add_argument(
+    "--service-playback",
     action="store_true",
     help=argparse.SUPPRESS,
 )
@@ -530,23 +665,14 @@ elif args.mode == 'gif':
     )
 
 else:
-    frames = None
-
     try:
-        frames = get_video_frames(
-            args.path,
-            rotate=args.rotate,
-            resize_mode=args.resize,
-        )
-        first_frame = next(frames, None)
-
-        if first_frame is None:
-            parser.error("The video contains no frames.")
-
         send_commands()
         send_video(
-            first_frame,
-            frames,
+            lambda: get_video_frames(
+                args.path,
+                rotate=args.rotate,
+                resize_mode=args.resize,
+            ),
             debug_timing=args.debug_timing,
             chunk_delay=args.chunk_delay,
         )
@@ -554,6 +680,3 @@ else:
         print("\nVideo playback stopped.")
     except (RuntimeError, ValueError) as exc:
         parser.error(str(exc))
-    finally:
-        if frames is not None:
-            frames.close()

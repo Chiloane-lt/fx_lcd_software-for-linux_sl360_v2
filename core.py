@@ -92,46 +92,56 @@ def send_gif(
         dev.close()
 
 def send_video(
-    first_frame,
-    frames,
+    frames_factory,
     debug_timing: bool = False,
     chunk_delay: float = 0.0,
 ) -> None:
-    """Stream a video to the LCD, starting with its prepared first frame."""
-    from itertools import chain
-
+    """Loop a video indefinitely, closing each FFmpeg stream between passes."""
     dev = hid.device()
     config = load_config()
 
     try:
         dev.open(config["usb_vid"], config["usb_pid"])
+        frame_number = 0
 
+        while True:
+            frames = frames_factory()
+            frames_this_pass = 0
 
-        for frame_number, (jpeg_bytes, duration_ms) in enumerate(
-            chain((first_frame,), frames), start=1
-        ):
-            frame_start = time.monotonic()
+            try:
+                for jpeg_bytes, duration_ms in frames:
+                    frames_this_pass += 1
+                    frame_number += 1
+                    frame_start = time.monotonic()
 
-            chunks = prepare_chunks(prepare_blob(jpeg_bytes))
+                    chunks = prepare_chunks(prepare_blob(jpeg_bytes))
 
-            for chunk in chunks:
-                dev.write(bytes([0]) + chunk)
-                if chunk_delay > 0:
-                    time.sleep(chunk_delay)
+                    for chunk in chunks:
+                        dev.write(bytes([0]) + chunk)
+                        if chunk_delay > 0:
+                            time.sleep(chunk_delay)
 
-            elapsed_ms = (time.monotonic() - frame_start) * 1000
-            remaining_ms = duration_ms - elapsed_ms
+                    elapsed_ms = (time.monotonic() - frame_start) * 1000
+                    remaining_ms = duration_ms - elapsed_ms
 
-            if debug_timing:
-                print(
-                    f"Frame {frame_number}: target={duration_ms:.1f} ms, "
-                    f"transmission={elapsed_ms:.1f} ms, "
-                    f"wait={max(0, remaining_ms):.1f} ms",
-                    flush=True,
-                )
+                    if debug_timing:
+                        print(
+                            f"Frame {frame_number}: target={duration_ms:.1f} ms, "
+                            f"transmission={elapsed_ms:.1f} ms, "
+                            f"wait={max(0, remaining_ms):.1f} ms",
+                            flush=True,
+                        )
 
-            if remaining_ms > 0:
-                time.sleep(remaining_ms / 1000)
+                    if remaining_ms > 0:
+                        time.sleep(remaining_ms / 1000)
+
+            finally:
+                close_frames = getattr(frames, "close", None)
+                if close_frames is not None:
+                    close_frames()
+
+            if frames_this_pass == 0:
+                raise RuntimeError("The video contains no frames.")
 
     finally:
         dev.close()
