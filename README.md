@@ -21,19 +21,26 @@ The changes above reflect the current implementation and tests on the SL360 V2. 
 
 ## Current status
 
-### Working and tested
+### Implemented and covered by automated tests
+
 - Uses configurable USB vendor and product IDs, defaulting to `0x2000:0x3002` for the tested SL360 V2.
 - Displays images at 480 × 480.
-- Supports the original image-mode command-line interface and rotation options.
+- Supports image, animated GIF, and video playback paths.
 - Streams image data in 1024-byte chunks, prefixed with HID report ID `0x00`.
 - Uses the `LIG` brightness command with brightness value `0x64` (100%).
-- Skipping `DIS` prevents the built-in default text screen from reappearing in the observed tests.
+- Skips `DIS` because observed tests showed that doing so prevented the built-in default text screen from reappearing.
+- Reopens the video frame generator for each playback pass so video playback can loop.
+- Includes a foreground `service` command intended for systemd-managed playback.
+- Includes process detection and stop handling that distinguishes service playback from manually started playback.
+- Includes automated tests for configuration, media validation, runtime helpers, process detection, and video looping. Tests use mocked USB hardware.
 
-### Known limitations
-- The image remains visible while the streaming program runs.
-- When the HID connection closes, the display shuts down after approximately 2–3 seconds in observed tests.
-- The exact reason for this shutdown behaviour has not been confirmed.
-- Video mode, temperature overlays, and a graphical interface are not implemented.
+### Known limitations and validation status
+
+- Automated tests do not establish that the service works correctly on every Fedora installation or with every compatible device.
+- The systemd service setup on the development machine previously failed because SELinux denied execution of Python from the project virtual environment under the user's home directory. SELinux has not been disabled to work around this.
+- A supported installer and uninstaller have not yet been implemented.
+- The display's behavior after the HID connection closes remains incompletely understood.
+- Temperature overlays and a graphical interface are not implemented.
 - Only the ID-COOLING SL360 V2 described here has been tested with this adaptation.
 
 ## Hardware and environment
@@ -149,16 +156,40 @@ Supported rotation values are `0`, `90`, `180`, and `270`.
 
 | Argument | Description |
 | --- | --- |
-| `--mode {image,video}` | Required mode argument; image mode is implemented |
-| `path` | Required path to the source image |
+| `--mode {image,gif,video}` | Select image, animated GIF, or video playback |
+| `path` | Path to the source media file |
 | `--rotate {0,90,180,270}` | Clockwise rotation; defaults to `0` |
+| `--resize {stretch,fit,crop}` | Select how media is resized to the display |
 | `-h, --help` | Display command-line help |
 
 The program resizes the image to 480 × 480, converts it to RGB, encodes a baseline JPEG, and streams the frame to the LCD.
 
 **The image stream runs continuously.** Press `Ctrl+C` to stop the program. Based on current tests, the LCD shuts down shortly after the HID connection closes.
 
-Video mode is not implemented. Do not use it expecting video playback to work.
+Video playback loops continuously. Each pass obtains a fresh frame generator so the video can restart after reaching its end. Press `Ctrl+C` to stop manually started playback.
+
+### Managed playback
+
+The project includes a foreground service command that loads the saved media and playback settings. It is intended to be run by systemd:
+
+```bash
+python main.py service
+```
+
+For a manually managed playback process, use:
+
+```bash
+python main.py start
+python main.py stop
+```
+
+When playback is managed by the systemd service, stop it through systemd instead
+
+```bash
+sudo systemctl stop fx-lcd.service
+```
+
+The service command and process-handling code have automated test coverage. A complete, SELinux-compatible installation workflow has not yet been established, so these commands should not be taken as proof that systemd startup is ready on every system.
 
 ## Troubleshooting
 
@@ -196,22 +227,28 @@ The precise firmware behaviour when the HID connection closes remains unconfirme
 
 Additional hardware observations, test results, and local backups are kept in the `dev-notes/` directory during development. Local backups and test artifacts are excluded from Git; `dev-notes/DEVELOPMENT.md` records the current findings.
 
-This project is still being tested locally. It has not been packaged for installation.
+This project is under active development. Playback and runtime-helper changes have automated test coverage, but installation, removal, and systemd startup still require further validation. The installer and uninstaller are planned next.
 
 ## Roadmap
 
 - [ ] Investigate display behaviour after the HID connection closes
-- [ ] Implement video mode
+- [x] Implement looping video playback
+- [x] Add a foreground service command and managed-process detection
+- [ ] Complete and validate systemd startup with SELinux enforcing
+- [ ] Implement an installer and uninstaller
+- [ ] Test installation and removal in a clean Fedora environment
 - [ ] Add temperature overlay
 - [ ] Handle EXIF orientation automatically
 - [ ] Develop a graphical interface
-- [ ] Prepare packaging only after local testing is complete
+- [ ] Consider RPM packaging after the installation workflow is validated
 
 ## Disclaimer and attribution
 
 This is an unofficial community adaptation and is not affiliated with or endorsed by ID-COOLING.
 
-The work builds on the original [fx_lcd_software-for-linux](https://github.com/w1n-ror/fx_lcd_software-for-linux) project. Please consult the original repository for its licensing terms.
+This project builds on the original [fx_lcd_software-for-linux](https://github.com/w1n-ror/fx_lcd_software-for-linux) project. Please consult the original repository for its licensing terms.
+
+**AI assistance disclaimer:** AI tools were used to assist with software development, debugging, test development, and documentation. The project is still being tested, and AI assistance does not guarantee correctness, hardware compatibility, or safety. Changes should be reviewed and validated on the intended hardware before relying on them.
 
 This software communicates with the LCD display; it does not control the cooler's fans or pump. Use it at your own risk.
 
